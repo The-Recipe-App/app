@@ -1,33 +1,59 @@
-from app.lifespan import lifespan
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, Request, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
+from app.lifespan import lifespan
 from api.v1.router import v1_router
-from security.firewall.session import FirewallSession
+from api.v1.admin.admin import setup_admin
+from api.v1.auth.utils.dependencies import get_current_user_admin_core
+from api.legal.legal import router as legal_router
+
+from database.main.core.session import AsyncSessionLocal
+from utilities.common.common_utility import debug_print
+
+# ---------------- APP ----------------
 
 app = FastAPI(
     lifespan=lifespan,
-    title="My API",
+    title="Forkit - Core Systems Interface",
     version="1.0.0",
 )
 
+# ---------------- CORS ----------------
+# Exact origins = faster preflight handling
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "https://forkit.up.railway.app"],  # exact frontend origin
-    allow_credentials=True,                   # 🔴 REQUIRED
-    allow_methods=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "https://forkit.up.railway.app",
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
-FirewallSession(app).initialize()
+# ---------------- STATIC FILES ----------------
 
-# ---- ROUTERS ----
+BASE_DIR = Path(__file__).resolve().parents[1]
+
+app.mount(
+    "/static",
+    StaticFiles(directory=BASE_DIR / "app" / "static"),
+    name="static",
+)
+
+# ---------------- ROUTERS ----------------
+
 app.include_router(v1_router, prefix="/api")
+app.include_router(legal_router, prefix="/api")
 
-# ---- HEALTH / ROOT ----
+setup_admin(app)
+
+# ---------------- ROOT ----------------
+
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
-
-# if __name__ == "__main__":
-#     import uvicorn
-#     uvicorn.run(app, host="0.0.0.0", port=8000)
